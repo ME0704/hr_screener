@@ -93,7 +93,8 @@ export default function ViewApplications() {
                       #{index + 1}
                     </div>
                     <div>
-                      <p className="font-semibold text-lg">Candidate #{app.candidate_id}</p>
+                      <p className="font-semibold text-lg">{app.candidate_name}</p>
+                      <p className="text-gray-500 text-xs">{app.candidate_email}</p>
                       <p className="text-gray-500 text-xs">
                         Applied {new Date(app.created_at).toLocaleDateString()}
                       </p>

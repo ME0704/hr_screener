@@ -37,12 +37,20 @@ export default function CandidateDashboard() {
             <h1 className="text-3xl font-bold">Available Jobs</h1>
             <p className="text-gray-400 mt-1">Browse and apply to open positions</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="border border-gray-700 text-gray-400 hover:text-white px-4 py-2 rounded-lg transition"
-          >
-            Logout
-          </button>
+          <div className="flex gap-3">
+            <button
+                onClick={() => navigate('/candidate/my-applications')}
+                className="border border-green-600 text-green-400 hover:bg-green-600 hover:text-white px-4 py-2 rounded-lg transition"
+            >
+                My Applications
+            </button>
+            <button
+                onClick={handleLogout}
+                className="border border-gray-700 text-gray-400 hover:text-white px-4 py-2 rounded-lg transition"
+            >
+                Logout
+            </button>
+            </div>
         </div>
 
         {loading ? (

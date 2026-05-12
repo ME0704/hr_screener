@@ -133,7 +133,7 @@ def apply_to_job(
 
 
 # --- Company views all ranked applications for a job ---
-@router.get("/job/{job_id}/applications", response_model=list[schemas.ApplicationOut])
+@router.get("/job/{job_id}/applications")
 def get_ranked_applications(
     job_id: int,
     token: str,
@@ -141,7 +141,6 @@ def get_ranked_applications(
 ):
     company = get_current_company(token, db)
 
-    # Make sure this job belongs to this company
     job = db.query(models.Job).filter(
         models.Job.id == job_id,
         models.Job.company_id == company.id
@@ -149,12 +148,31 @@ def get_ranked_applications(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or not yours")
 
-    # Return applications ranked by score highest first
     applications = db.query(models.Application).filter(
         models.Application.job_id == job_id
     ).order_by(models.Application.score.desc()).all()
 
-    return applications
+    # Add candidate name to each application
+    results = []
+    for app in applications:
+        candidate = db.query(models.Candidate).filter(
+            models.Candidate.id == app.candidate_id
+        ).first()
+        results.append({
+            "id": app.id,
+            "candidate_id": app.candidate_id,
+            "candidate_name": candidate.name if candidate else "Unknown",
+            "candidate_email": candidate.email if candidate else "Unknown",
+            "job_id": app.job_id,
+            "cv_url": app.cv_url,
+            "score": app.score,
+            "summary": app.summary,
+            "matched_skills": app.matched_skills,
+            "missing_skills": app.missing_skills,
+            "status": app.status,
+            "created_at": app.created_at,
+        })
+    return results
 
 
 # --- Company updates candidate status ---
@@ -182,3 +200,33 @@ def update_status(
     db.commit()
     db.refresh(application)
     return application
+
+
+@router.get("/my-applications")
+def get_my_applications(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    candidate = get_current_candidate(token, db)
+
+    applications = db.query(models.Application).filter(
+        models.Application.candidate_id == candidate.id
+    ).order_by(models.Application.created_at.desc()).all()
+
+    results = []
+    for app in applications:
+        job = db.query(models.Job).filter(models.Job.id == app.job_id).first()
+        results.append({
+            "id": app.id,
+            "job_id": app.job_id,
+            "job_title": job.title if job else "Unknown",
+            "candidate_id": app.candidate_id,
+            "cv_url": app.cv_url,
+            "score": app.score,
+            "summary": app.summary,
+            "matched_skills": app.matched_skills,
+            "missing_skills": app.missing_skills,
+            "status": app.status,
+            "created_at": app.created_at,
+        })
+    return results

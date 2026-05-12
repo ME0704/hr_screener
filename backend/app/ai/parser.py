@@ -1,8 +1,22 @@
 import pdfplumber
 import re
 
+# Skill synonyms — maps variations to a standard skill name
+SKILL_SYNONYMS = {
+    "python": ["python", "python3", "py"],
+    "javascript": ["javascript", "js", "node.js", "nodejs", "node"],
+    "react": ["react", "reactjs", "react.js"],
+    "fastapi": ["fastapi", "fast api"],
+    "postgresql": ["postgresql", "postgres", "psql"],
+    "mysql": ["mysql", "my sql"],
+    "machine learning": ["machine learning", "ml", "deep learning", "ai", "artificial intelligence"],
+    "data analysis": ["data analysis", "data analytics", "power bi", "tableau", "excel"],
+    "bsc computer science": ["computer science", "bsc cs", "bsc computer science", "bachelor of science", "bsc"],
+    "2 years experience": ["2 years", "two years", "3 years", "4 years", "5 years", "senior", "experienced"],
+}
+
+
 def extract_text_from_pdf(file_path: str) -> str:
-    """Extract raw text from a PDF file"""
     text = ""
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
@@ -13,50 +27,51 @@ def extract_text_from_pdf(file_path: str) -> str:
 
 
 def extract_email(text: str) -> str:
-    """Pull email address from CV text"""
     match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)
     return match.group(0) if match else "Not found"
 
 
 def extract_phone(text: str) -> str:
-    """Pull phone number from CV text"""
     match = re.search(r'(\+?\d[\d\s\-]{7,15}\d)', text)
     return match.group(0).strip() if match else "Not found"
 
 
 def extract_name(text: str) -> str:
-    """Extract name — usually the first line of a CV"""
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     return lines[0] if lines else "Unknown"
 
 
+def normalize_skill(skill: str) -> list:
+    """Return all known variations of a skill for matching"""
+    skill_lower = skill.lower().strip()
+    # Check if we have synonyms for this skill
+    for key, synonyms in SKILL_SYNONYMS.items():
+        if skill_lower in synonyms or skill_lower == key:
+            return synonyms
+    # If no synonyms, just return the skill itself
+    return [skill_lower]
+
+
 def extract_skills_from_text(text: str, required_skills: list) -> dict:
-    """
-    Check which required skills appear in the CV text.
-    Returns matched and missing skills.
-    """
     text_lower = text.lower()
     matched = []
     missing = []
 
     for skill in required_skills:
-        if skill.lower().strip() in text_lower:
-            matched.append(skill.strip())
+        skill_clean = skill.strip()
+        variations = normalize_skill(skill_clean)
+        # Check if ANY variation of the skill appears in the CV
+        found = any(variation in text_lower for variation in variations)
+        if found:
+            matched.append(skill_clean)
         else:
-            missing.append(skill.strip())
+            missing.append(skill_clean)
 
-    return {
-        "matched": matched,
-        "missing": missing
-    }
+    return {"matched": matched, "missing": missing}
 
 
 def parse_cv(file_path: str, required_skills: list) -> dict:
-    """
-    Main function — parse a CV and return all extracted data
-    """
     text = extract_text_from_pdf(file_path)
-
     skills_result = extract_skills_from_text(text, required_skills)
 
     return {

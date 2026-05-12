@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { CompanyRoute, CandidateRoute } from './components/ProtectedRoute'
 import Home from './pages/Home'
 import CompanyRegister from './pages/CompanyRegister'
 import CompanyLogin from './pages/CompanyLogin'
@@ -9,21 +10,41 @@ import CandidateRegister from './pages/CandidateRegister'
 import CandidateLogin from './pages/CandidateLogin'
 import CandidateDashboard from './pages/CandidateDashboard'
 import ApplyJob from './pages/ApplyJob'
+import MyApplications from './pages/MyApplications'
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Home />} />
+
+        {/* Public */}
         <Route path="/company/register" element={<CompanyRegister />} />
         <Route path="/company/login" element={<CompanyLogin />} />
-        <Route path="/company/dashboard" element={<CompanyDashboard />} />
-        <Route path="/company/post-job" element={<PostJob />} />
-        <Route path="/company/jobs/:jobId/applications" element={<ViewApplications />} />
         <Route path="/candidate/register" element={<CandidateRegister />} />
         <Route path="/candidate/login" element={<CandidateLogin />} />
-        <Route path="/candidate/dashboard" element={<CandidateDashboard />} />
-        <Route path="/candidate/apply/:jobId" element={<ApplyJob />} />
+
+        {/* Protected Company Routes */}
+        <Route path="/company/dashboard" element={
+          <CompanyRoute><CompanyDashboard /></CompanyRoute>
+        } />
+        <Route path="/company/post-job" element={
+          <CompanyRoute><PostJob /></CompanyRoute>
+        } />
+        <Route path="/company/jobs/:jobId/applications" element={
+          <CompanyRoute><ViewApplications /></CompanyRoute>
+        } />
+
+        {/* Protected Candidate Routes */}
+        <Route path="/candidate/dashboard" element={
+          <CandidateRoute><CandidateDashboard /></CandidateRoute>
+        } />
+        <Route path="/candidate/apply/:jobId" element={
+          <CandidateRoute><ApplyJob /></CandidateRoute>
+        } />
+        <Route path="/candidate/my-applications" element={
+          <CandidateRoute><MyApplications /></CandidateRoute>
+        } />
       </Routes>
     </Router>
   )
