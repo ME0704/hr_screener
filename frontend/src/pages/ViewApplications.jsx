@@ -94,7 +94,7 @@ export default function ViewApplications() {
                     </div>
                     <div>
                       <p className="font-semibold text-lg">{app.candidate_name}</p>
-                      <p className="text-gray-500 text-xs">{app.candidate_email}</p>
+                        <p className="text-gray-500 text-xs">{app.candidate_email}</p>
                       <p className="text-gray-500 text-xs">
                         Applied {new Date(app.created_at).toLocaleDateString()}
                       </p>
@@ -110,9 +110,41 @@ export default function ViewApplications() {
 
                 {/* AI Summary */}
                 <div className="bg-gray-800 rounded-lg px-4 py-3 mb-4">
-                  <p className="text-xs text-purple-400 mb-1">🧠 AI Summary</p>
-                  <p className="text-gray-300 text-sm">{app.summary}</p>
+                <p className="text-xs text-purple-400 mb-1">🧠 AI Summary</p>
+                <p className="text-gray-300 text-sm">{app.summary}</p>
                 </div>
+
+                {/* Score Breakdown */}
+                <div className="grid grid-cols-5 gap-2 mb-4">
+                {[
+                    { label: 'Skills', max: 25, color: 'bg-purple-600' },
+                    { label: 'Experience', max: 20, color: 'bg-blue-600' },
+                    { label: 'Education', max: 15, color: 'bg-yellow-600' },
+                    { label: 'Relevance', max: 10, color: 'bg-green-600' },
+                    { label: 'CV Quality', max: 30, color: 'bg-pink-600' },
+                ].map(({ label, max, color }) => {
+                    const regex = new RegExp(`${label}: ([\\d.]+)/${max}`)
+                    const match = app.summary?.match(regex)
+                    const val = match ? parseFloat(match[1]) : 0
+                    const pct = Math.round((val / max) * 100)
+                    return (
+                    <div key={label} className="bg-gray-800 rounded-lg p-3 text-center">
+                        <p className="text-xs text-gray-400 mb-1">{label}</p>
+                        <p className="text-lg font-bold text-white">
+                        {val}<span className="text-xs text-gray-500">/{max}</span>
+                        </p>
+                        <div className="w-full bg-gray-700 rounded-full h-1 mt-1">
+                        <div
+                            className={`${color} h-1 rounded-full transition-all`}
+                            style={{ width: `${pct}%` }}
+                        />
+                        </div>
+                    </div>
+                    )
+                })}
+                </div>
+
+                {/* Skills */}
 
                 {/* Skills */}
                 <div className="grid grid-cols-2 gap-3 mb-4">

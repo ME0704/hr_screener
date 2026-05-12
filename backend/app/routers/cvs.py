@@ -6,6 +6,8 @@ from app.routers.auth import SECRET_KEY, ALGORITHM
 from app.ai.parser import parse_cv
 from app.ai.matcher import calculate_match_score
 from app.ai.summarizer import generate_summary
+from app.ai.matcher import calculate_match_score
+from app.ai.summarizer import generate_summary
 from jose import JWTError, jwt
 import shutil
 import os
@@ -95,41 +97,43 @@ def apply_to_job(
         shutil.copyfileobj(cv_file.file, buffer)
 
     # 5. Parse the CV with AI
-    required_skills = [s.strip() for s in job.requirements.split(",")]
-    parsed = parse_cv(file_path, required_skills)
+required_skills = [s.strip() for s in job.requirements.split(",")]
+parsed = parse_cv(file_path, required_skills)
 
-    # 6. Calculate match score
-    score = calculate_match_score(
-        cv_text=parsed["raw_text"],
-        job_requirements=job.requirements,
-        matched_skills=parsed["matched_skills"],
-        total_skills=len(required_skills)
-    )
+# 6. Calculate match score
+score_result = calculate_match_score(
+    cv_text=parsed["raw_text"],
+    job_requirements=job.requirements + " " + job.description,
+    matched_skills=parsed["matched_skills"],
+    total_skills=len(required_skills),
+    years_of_experience=parsed["years_of_experience"],
+    education_level=parsed["education_level"]
+)
 
-    # 7. Generate summary
-    summary = generate_summary(
-        name=parsed["name"],
-        matched_skills=parsed["matched_skills"],
-        missing_skills=parsed["missing_skills"],
-        score=score,
-        job_title=job.title
-    )
+# 7. Generate summary
+summary = generate_summary(
+    name=parsed["name"],
+    matched_skills=parsed["matched_skills"],
+    missing_skills=parsed["missing_skills"],
+    score=score_result["final_score"],
+    job_title=job.title,
+    years_of_experience=parsed["years_of_experience"],
+    education_level=parsed["education_level"],
+    breakdown=score_result["breakdown"],
+    quality_feedback=score_result["quality_feedback"]
+)
 
-    # 8. Save everything to the database
-    application = models.Application(
-        job_id=job_id,
-        candidate_id=candidate.id,
-        cv_url=file_path,
-        score=score,
-        summary=summary,
-        matched_skills=json.dumps(parsed["matched_skills"]),
-        missing_skills=json.dumps(parsed["missing_skills"]),
-        parsed_data=parsed["raw_text"]
-    )
-    db.add(application)
-    db.commit()
-    db.refresh(application)
-    return application
+# 8. Save to database
+application = models.Application(
+    job_id=job_id,
+    candidate_id=candidate.id,
+    cv_url=file_path,
+    score=score_result["final_score"],
+    summary=summary,
+    matched_skills=json.dumps(parsed["matched_skills"]),
+    missing_skills=json.dumps(parsed["missing_skills"]),
+    parsed_data=parsed["raw_text"]
+)
 
 
 # --- Company views all ranked applications for a job ---

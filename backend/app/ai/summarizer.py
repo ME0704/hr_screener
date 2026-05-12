@@ -3,32 +3,46 @@ def generate_summary(
     matched_skills: list,
     missing_skills: list,
     score: float,
-    job_title: str
+    job_title: str,
+    years_of_experience: float,
+    education_level: str,
+    breakdown: dict,
+    quality_feedback: list = []
 ) -> str:
-    """
-    Generate a short AI summary for the HR dashboard.
-    Tells the HR manager the key facts at a glance.
-    """
 
-    # Score label
     if score >= 75:
-        rating = "Strong match"
-    elif score >= 50:
-        rating = "Good match"
-    elif score >= 30:
-        rating = "Partial match"
+        rating = "Strong match ✅"
+    elif score >= 55:
+        rating = "Good match 🟡"
+    elif score >= 35:
+        rating = "Partial match 🟠"
     else:
-        rating = "Weak match"
+        rating = "Weak match ❌"
 
-    # Build summary
+    exp_line = f"{years_of_experience} years experience" if years_of_experience > 0 else "Experience not specified"
+
+    edu_map = {
+        "phd": "PhD", "masters": "Master's degree",
+        "bachelors": "Bachelor's degree", "diploma": "Diploma",
+        "alevel": "A-Level", "olevel": "O-Level", "unknown": "Education not detected"
+    }
+    edu_line = edu_map.get(education_level, "Not specified")
+
     matched_str = ", ".join(matched_skills) if matched_skills else "none detected"
     missing_str = ", ".join(missing_skills) if missing_skills else "none"
+    quality_str = ", ".join(quality_feedback) if quality_feedback else "well structured"
 
     summary = (
         f"{rating} for {job_title}. "
-        f"Matched skills: {matched_str}. "
+        f"{exp_line}. {edu_line}. "
+        f"Skills matched: {matched_str}. "
         f"Missing: {missing_str}. "
-        f"Overall score: {score}/100."
+        f"CV quality notes: {quality_str}. "
+        f"Score breakdown — Skills: {breakdown['skills']}/25, "
+        f"Experience: {breakdown['experience']}/20, "
+        f"Education: {breakdown['education']}/15, "
+        f"Relevance: {breakdown['semantic']}/10, "
+        f"CV Quality: {breakdown['cv_quality']}/30."
     )
 
     return summary
