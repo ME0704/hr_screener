@@ -1,0 +1,184 @@
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app import models, schemas
+from app.routers.auth import SECRET_KEY, ALGORITHM
+from app.ai.parser import parse_cv
+from app.ai.matcher import calculate_match_score
+from app.ai.summarizer import generate_summary
+from jose import JWTError, jwt
+import shutil
+import os
+import json
+
+router = APIRouter(prefix="/cvs", tags=["CVs"])
+
+# Folder to save uploaded CVs
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+
+# --- Helper: get current candidate from token ---
+def get_current_candidate(token: str, db: Session):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        role = payload.get("role")
+
+        if email is None or role != "candidate":
+            raise HTTPException(status_code=401, detail="Not authorized")
+
+        candidate = db.query(models.Candidate).filter(
+            models.Candidate.email == email
+        ).first()
+
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+
+        return candidate
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# --- Helper: get current company from token ---
+def get_current_company(token: str, db: Session):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        role = payload.get("role")
+
+        if email is None or role != "company":
+            raise HTTPException(status_code=401, detail="Not authorized")
+
+        company = db.query(models.Company).filter(
+            models.Company.email == email
+        ).first()
+
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        return company
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# --- Candidate applies to a job and uploads CV ---
+@router.post("/apply/{job_id}", response_model=schemas.ApplicationOut)
+def apply_to_job(
+    job_id: int,
+    token: str = Form(...),
+    cv_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    # 1. Authenticate candidate
+    candidate = get_current_candidate(token, db)
+
+    # 2. Check job exists
+    job = db.query(models.Job).filter(
+        models.Job.id == job_id,
+        models.Job.is_active == "active"
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or closed")
+
+    # 3. Check not already applied
+    existing = db.query(models.Application).filter(
+        models.Application.job_id == job_id,
+        models.Application.candidate_id == candidate.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Already applied to this job")
+
+    # 4. Save the uploaded PDF
+    file_path = f"{UPLOAD_DIR}/cv_{candidate.id}_{job_id}.pdf"
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(cv_file.file, buffer)
+
+    # 5. Parse the CV with AI
+    required_skills = [s.strip() for s in job.requirements.split(",")]
+    parsed = parse_cv(file_path, required_skills)
+
+    # 6. Calculate match score
+    score = calculate_match_score(
+        cv_text=parsed["raw_text"],
+        job_requirements=job.requirements,
+        matched_skills=parsed["matched_skills"],
+        total_skills=len(required_skills)
+    )
+
+    # 7. Generate summary
+    summary = generate_summary(
+        name=parsed["name"],
+        matched_skills=parsed["matched_skills"],
+        missing_skills=parsed["missing_skills"],
+        score=score,
+        job_title=job.title
+    )
+
+    # 8. Save everything to the database
+    application = models.Application(
+        job_id=job_id,
+        candidate_id=candidate.id,
+        cv_url=file_path,
+        score=score,
+        summary=summary,
+        matched_skills=json.dumps(parsed["matched_skills"]),
+        missing_skills=json.dumps(parsed["missing_skills"]),
+        parsed_data=parsed["raw_text"]
+    )
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+# --- Company views all ranked applications for a job ---
+@router.get("/job/{job_id}/applications", response_model=list[schemas.ApplicationOut])
+def get_ranked_applications(
+    job_id: int,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    company = get_current_company(token, db)
+
+    # Make sure this job belongs to this company
+    job = db.query(models.Job).filter(
+        models.Job.id == job_id,
+        models.Job.company_id == company.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or not yours")
+
+    # Return applications ranked by score highest first
+    applications = db.query(models.Application).filter(
+        models.Application.job_id == job_id
+    ).order_by(models.Application.score.desc()).all()
+
+    return applications
+
+
+# --- Company updates candidate status ---
+@router.put("/application/{application_id}/status", response_model=schemas.ApplicationOut)
+def update_status(
+    application_id: int,
+    status: str,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    company = get_current_company(token, db)
+
+    application = db.query(models.Application).filter(
+        models.Application.id == application_id
+    ).first()
+
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    valid_statuses = ["pending", "shortlisted", "rejected", "interviewed"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Status must be one of {valid_statuses}")
+
+    application.status = status
+    db.commit()
+    db.refresh(application)
+    return application
