@@ -11,6 +11,8 @@ import CandidateLogin from './pages/CandidateLogin'
 import CandidateDashboard from './pages/CandidateDashboard'
 import ApplyJob from './pages/ApplyJob'
 import MyApplications from './pages/MyApplications'
+import BulkUpload from './pages/BulkUpload'
+import EditJob from './pages/EditJob'
 
 function App() {
   return (
@@ -44,6 +46,12 @@ function App() {
         } />
         <Route path="/candidate/my-applications" element={
           <CandidateRoute><MyApplications /></CandidateRoute>
+        } />
+        <Route path="/company/bulk-upload/:jobId" element={
+          <CompanyRoute><BulkUpload /></CompanyRoute>
+        } />
+        <Route path="/company/edit-job/:jobId" element={
+          <CompanyRoute><EditJob /></CompanyRoute>
         } />
       </Routes>
     </Router>

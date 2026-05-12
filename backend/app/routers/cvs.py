@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.routers.auth import SECRET_KEY, ALGORITHM
@@ -97,44 +98,159 @@ def apply_to_job(
         shutil.copyfileobj(cv_file.file, buffer)
 
     # 5. Parse the CV with AI
-required_skills = [s.strip() for s in job.requirements.split(",")]
-parsed = parse_cv(file_path, required_skills)
+    required_skills = [s.strip() for s in job.requirements.split(",")]
+    parsed = parse_cv(file_path, required_skills)
 
-# 6. Calculate match score
-score_result = calculate_match_score(
-    cv_text=parsed["raw_text"],
-    job_requirements=job.requirements + " " + job.description,
-    matched_skills=parsed["matched_skills"],
-    total_skills=len(required_skills),
-    years_of_experience=parsed["years_of_experience"],
-    education_level=parsed["education_level"]
-)
+    # 6. Calculate match score
+    score_result = calculate_match_score(
+        cv_text=parsed["raw_text"],
+        job_requirements=job.requirements + " " + job.description,
+        matched_skills=parsed["matched_skills"],
+        total_skills=len(required_skills),
+        years_of_experience=parsed["years_of_experience"],
+        education_level=parsed["education_level"]
+    )
 
-# 7. Generate summary
-summary = generate_summary(
-    name=parsed["name"],
-    matched_skills=parsed["matched_skills"],
-    missing_skills=parsed["missing_skills"],
-    score=score_result["final_score"],
-    job_title=job.title,
-    years_of_experience=parsed["years_of_experience"],
-    education_level=parsed["education_level"],
-    breakdown=score_result["breakdown"],
-    quality_feedback=score_result["quality_feedback"]
-)
+    # 7. Generate summary
+    summary = generate_summary(
+        name=parsed["name"],
+        matched_skills=parsed["matched_skills"],
+        missing_skills=parsed["missing_skills"],
+        score=score_result["final_score"],
+        job_title=job.title,
+        years_of_experience=parsed["years_of_experience"],
+        education_level=parsed["education_level"],
+        breakdown=score_result["breakdown"],
+        quality_feedback=score_result["quality_feedback"]
+    )
 
-# 8. Save to database
-application = models.Application(
-    job_id=job_id,
-    candidate_id=candidate.id,
-    cv_url=file_path,
-    score=score_result["final_score"],
-    summary=summary,
-    matched_skills=json.dumps(parsed["matched_skills"]),
-    missing_skills=json.dumps(parsed["missing_skills"]),
-    parsed_data=parsed["raw_text"]
-)
+    # 8. Save to database
+    application = models.Application(
+        job_id=job_id,
+        candidate_id=candidate.id,
+        cv_url=file_path,
+        score=score_result["final_score"],
+        summary=summary,
+        matched_skills=json.dumps(parsed["matched_skills"]),
+        missing_skills=json.dumps(parsed["missing_skills"]),
+        parsed_data=parsed["raw_text"]
+    )
 
+
+# -- company upload bulk cvs for a job 
+@router.post("/bulk-upload/{job_id}")
+def bulk_upload_cvs(
+    job_id: int,
+    token: str = Form(...),
+    cv_files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    company = get_current_company(token, db)
+
+    # Check job belongs to company
+    job = db.query(models.Job).filter(
+        models.Job.id == job_id,
+        models.Job.company_id == company.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    required_skills = [s.strip() for s in job.requirements.split(",")]
+    results = []
+
+    for cv_file in cv_files:
+        try:
+            # Save file
+            file_path = f"{UPLOAD_DIR}/bulk_{job_id}_{cv_file.filename}"
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(cv_file.file, buffer)
+
+            # Parse CV
+            parsed = parse_cv(file_path, required_skills)
+
+            # Score CV
+            score_result = calculate_match_score(
+                cv_text=parsed["raw_text"],
+                job_requirements=job.requirements + " " + job.description,
+                matched_skills=parsed["matched_skills"],
+                total_skills=len(required_skills),
+                years_of_experience=parsed["years_of_experience"],
+                education_level=parsed["education_level"]
+            )
+
+            # Generate summary
+            summary = generate_summary(
+                name=parsed["name"],
+                matched_skills=parsed["matched_skills"],
+                missing_skills=parsed["missing_skills"],
+                score=score_result["final_score"],
+                job_title=job.title,
+                years_of_experience=parsed["years_of_experience"],
+                education_level=parsed["education_level"],
+                breakdown=score_result["breakdown"],
+                quality_feedback=score_result["quality_feedback"]
+            )
+
+            # Create a guest candidate record for bulk uploads
+            guest_email = f"bulk_{job_id}_{cv_file.filename}@upload.local"
+            candidate = db.query(models.Candidate).filter(
+                models.Candidate.email == guest_email
+            ).first()
+
+            if not candidate:
+                candidate = models.Candidate(
+                    name=parsed["name"],
+                    email=guest_email,
+                    hashed_password="bulk_upload"
+                )
+                db.add(candidate)
+                db.commit()
+                db.refresh(candidate)
+
+            # Save application
+            application = models.Application(
+                job_id=job_id,
+                candidate_id=candidate.id,
+                cv_url=file_path,
+                score=score_result["final_score"],
+                summary=summary,
+                matched_skills=json.dumps(parsed["matched_skills"]),
+                missing_skills=json.dumps(parsed["missing_skills"]),
+                parsed_data=parsed["raw_text"]
+            )
+            db.add(application)
+            db.commit()
+            db.refresh(application)
+
+            results.append({
+                "filename": cv_file.filename,
+                "candidate_name": parsed["name"],
+                "candidate_email": parsed["email"],
+                "score": score_result["final_score"],
+                "summary": summary,
+                "matched_skills": parsed["matched_skills"],
+                "missing_skills": parsed["missing_skills"],
+                "application_id": application.id,
+                "status": "processed"
+            })
+
+        except Exception as e:
+            results.append({
+                "filename": cv_file.filename,
+                "status": "failed",
+                "error": str(e)
+            })
+
+    # Sort by score highest first
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+    return {
+        "job_title": job.title,
+        "total_uploaded": len(cv_files),
+        "total_processed": len([r for r in results if r["status"] == "processed"]),
+        "total_failed": len([r for r in results if r["status"] == "failed"]),
+        "results": results
+    }
 
 # --- Company views all ranked applications for a job ---
 @router.get("/job/{job_id}/applications")

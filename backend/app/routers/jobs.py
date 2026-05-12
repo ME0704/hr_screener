@@ -95,3 +95,68 @@ def close_job(
     db.commit()
     db.refresh(job)
     return job
+
+
+# --- Edit a Job ---
+@router.put("/{job_id}", response_model=schemas.JobOut)
+def edit_job(
+    job_id: int,
+    payload: schemas.JobCreate,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    company = get_current_company(token, db)
+    job = db.query(models.Job).filter(
+        models.Job.id == job_id,
+        models.Job.company_id == company.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or not yours")
+
+    job.title = payload.title
+    job.description = payload.description
+    job.requirements = payload.requirements
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+# --- Delete a Job ---
+@router.delete("/{job_id}")
+def delete_job(
+    job_id: int,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    company = get_current_company(token, db)
+    job = db.query(models.Job).filter(
+        models.Job.id == job_id,
+        models.Job.company_id == company.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or not yours")
+
+    db.delete(job)
+    db.commit()
+    return {"message": "Job deleted successfully"}
+
+
+# --- Toggle Job Status (Active/Closed) ---
+@router.put("/{job_id}/toggle-status", response_model=schemas.JobOut)
+def toggle_job_status(
+    job_id: int,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    company = get_current_company(token, db)
+    job = db.query(models.Job).filter(
+        models.Job.id == job_id,
+        models.Job.company_id == company.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or not yours")
+
+    job.is_active = "closed" if job.is_active == "active" else "active"
+    db.commit()
+    db.refresh(job)
+    return job
