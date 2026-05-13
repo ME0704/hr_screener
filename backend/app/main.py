@@ -23,7 +23,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://hr-screener-sigma.vercel.app/"
+        "https://hr-screener-sigma.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
