@@ -1,8 +1,10 @@
-from sentence_transformers import SentenceTransformer, util
+import spacy
 from app.ai.cv_quality import score_cv_quality
 from app.ai.uganda_intelligence import get_uganda_intelligence_report
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Load once at startup — much lighter than sentence-transformers
+nlp = spacy.load("en_core_web_sm")
+
 
 EDUCATION_RANK = {
     "phd": 5, "masters": 4, "bachelors": 3,
@@ -70,10 +72,14 @@ def score_education(cv_education: str, requirements_text: str) -> float:
 
 
 def score_semantic(cv_text: str, job_requirements: str) -> float:
-    cv_embedding = model.encode(cv_text[:3000], convert_to_tensor=True)
-    job_embedding = model.encode(job_requirements, convert_to_tensor=True)
-    similarity = util.cos_sim(cv_embedding, job_embedding).item()
-    return max(0.0, min(1.0, similarity))
+    """Use spaCy similarity instead of sentence-transformers"""
+    try:
+        cv_doc = nlp(cv_text[:1000])
+        job_doc = nlp(job_requirements[:500])
+        similarity = cv_doc.similarity(job_doc)
+        return max(0.0, min(1.0, similarity))
+    except Exception:
+        return 0.5
 
 
 def calculate_match_score(
@@ -85,29 +91,27 @@ def calculate_match_score(
     education_level: str = "unknown"
 ) -> dict:
 
-    # Core scores
     skills_raw = score_skills(matched_skills, total_skills)
     experience_raw = score_experience(years_of_experience, job_requirements)
     education_raw = score_education(education_level, job_requirements)
     semantic_raw = score_semantic(cv_text, job_requirements)
 
-    # CV quality score (out of 30)
     quality_result = score_cv_quality(cv_text)
     quality_score = quality_result["quality_score"]
 
-    # Uganda intelligence bonus (out of 15)
     uganda_report = get_uganda_intelligence_report(cv_text, job_requirements)
     uganda_bonus = uganda_report["total_bonus"]
 
-    # Weighted scores
     skills_score = round(skills_raw * 25, 1)
     experience_score = round(experience_raw * 20, 1)
     education_score = round(education_raw * 15, 1)
     semantic_score = round(semantic_raw * 10, 1)
 
-    # Base score out of 85 + quality 30 + uganda bonus 15 = max 100
-    base_score = skills_score + experience_score + education_score + semantic_score
-    final_score = round(base_score + quality_score + uganda_bonus, 1)
+    final_score = round(
+        skills_score + experience_score +
+        education_score + semantic_score +
+        quality_score + uganda_bonus, 1
+    )
 
     return {
         "final_score": min(final_score, 100),
