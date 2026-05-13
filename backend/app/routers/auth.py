@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
+from app.plans import PLANS, get_plan
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
@@ -99,3 +100,58 @@ def login_candidate(payload: schemas.CandidateLogin, db: Session = Depends(get_d
         "role": "candidate"
     })
     return {"access_token": token, "token_type": "bearer"}
+
+
+# --- Get current company plan info ---
+@router.get("/company/plan")
+def get_company_plan(token: str, db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        company = db.query(models.Company).filter(
+            models.Company.email == email
+        ).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        plan = get_plan(company.plan)
+        max_cvs = plan["max_cvs_per_month"]
+        used = company.cvs_processed_this_month or 0
+
+        return {
+            "company_name": company.name,
+            "plan": company.plan,
+            "plan_details": plan,
+            "cvs_used_this_month": used,
+            "cvs_remaining": (max_cvs - used) if max_cvs != -1 else -1,
+            "max_cvs_per_month": max_cvs,
+        }
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# --- Upgrade plan (manual for now, Flutterwave later) ---
+@router.put("/company/upgrade-plan")
+def upgrade_plan(
+    new_plan: str,
+    token: str,
+    db: Session = Depends(get_db)
+):
+    if new_plan not in ["free", "starter", "business"]:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        company = db.query(models.Company).filter(
+            models.Company.email == email
+        ).first()
+        if not company:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        company.plan = new_plan
+        db.commit()
+
+        return {"message": f"Plan upgraded to {new_plan}", "plan": new_plan}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")

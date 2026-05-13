@@ -13,6 +13,7 @@ import ApplyJob from './pages/ApplyJob'
 import MyApplications from './pages/MyApplications'
 import BulkUpload from './pages/BulkUpload'
 import EditJob from './pages/EditJob'
+import Pricing from './pages/Pricing'
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
         <Route path="/company/login" element={<CompanyLogin />} />
         <Route path="/candidate/register" element={<CandidateRegister />} />
         <Route path="/candidate/login" element={<CandidateLogin />} />
+        <Route path="/pricing" element={<Pricing />} />
 
         {/* Protected Company Routes */}
         <Route path="/company/dashboard" element={

@@ -7,10 +7,12 @@ export default function CompanyDashboard() {
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(true)
   const token = localStorage.getItem('company_token')
+  const [planInfo, setPlanInfo] = useState(null)
 
   useEffect(() => {
     if (!token) { navigate('/company/login'); return }
     fetchJobs()
+    fetchPlanInfo()
   }, [])
 
   const fetchJobs = async () => {
@@ -23,6 +25,15 @@ export default function CompanyDashboard() {
       setLoading(false)
     }
   }
+
+  const fetchPlanInfo = async () => {
+  try {
+    const res = await API.get(`/auth/company/plan?token=${token}`)
+    setPlanInfo(res.data)
+  } catch (err) {
+    console.error(err)
+  }
+}
 
   const handleToggleStatus = async (jobId, currentStatus) => {
     try {
@@ -74,6 +85,38 @@ export default function CompanyDashboard() {
             </button>
           </div>
         </div>
+
+        {/* Plan Banner */}
+        {planInfo && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+            <div>
+                <span className={`text-xs px-2 py-1 rounded-full font-bold mr-2 ${
+                planInfo.plan === 'business' ? 'bg-yellow-500 text-black' :
+                planInfo.plan === 'starter' ? 'bg-purple-600 text-white' :
+                'bg-gray-700 text-gray-300'
+                }`}>
+                {planInfo.plan.toUpperCase()}
+                </span>
+                <span className="text-gray-300 text-sm font-medium">{planInfo.company_name}</span>
+            </div>
+            <div className="text-sm text-gray-400">
+                {planInfo.max_cvs_per_month === -1
+                ? 'Unlimited CV screenings'
+                : `${planInfo.cvs_used_this_month} / ${planInfo.max_cvs_per_month} CVs used this month`
+                }
+            </div>
+            </div>
+            {planInfo.plan !== 'business' && (
+            <button
+                onClick={() => navigate('/pricing')}
+                className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-3 py-2 rounded-lg transition"
+            >
+                ⚡ Upgrade Plan
+            </button>
+            )}
+        </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

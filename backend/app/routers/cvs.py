@@ -9,6 +9,7 @@ from app.ai.matcher import calculate_match_score
 from app.ai.summarizer import generate_summary
 from app.ai.matcher import calculate_match_score
 from app.ai.summarizer import generate_summary
+from app.plans import check_cv_limit, reset_monthly_usage
 from jose import JWTError, jwt
 import shutil
 import os
@@ -76,6 +77,16 @@ def apply_to_job(
     # 1. Authenticate candidate
     candidate = get_current_candidate(token, db)
 
+    # Check company CV limit
+    job_company = db.query(models.Company).filter(
+        models.Company.id == job.company_id
+    ).first()
+
+    reset_monthly_usage(job_company, db)
+    cv_check = check_cv_limit(job_company, count=1)
+    if not cv_check["allowed"]:
+        raise HTTPException(status_code=403, detail=cv_check["reason"])
+
     # 2. Check job exists
     job = db.query(models.Job).filter(
         models.Job.id == job_id,
@@ -121,7 +132,8 @@ def apply_to_job(
         years_of_experience=parsed["years_of_experience"],
         education_level=parsed["education_level"],
         breakdown=score_result["breakdown"],
-        quality_feedback=score_result["quality_feedback"]
+        quality_feedback=score_result["quality_feedback"],
+        uganda_insights=score_result["uganda_report"]["insights"]
     )
 
     # 8. Save to database
@@ -135,6 +147,10 @@ def apply_to_job(
         missing_skills=json.dumps(parsed["missing_skills"]),
         parsed_data=parsed["raw_text"]
     )
+
+    # Increment company CV count
+    job_company.cvs_processed_this_month += 1
+    db.commit()
 
 
 # -- company upload bulk cvs for a job 
@@ -152,6 +168,20 @@ def bulk_upload_cvs(
         models.Job.id == job_id,
         models.Job.company_id == company.id
     ).first()
+
+    # Check company CV limit for bulk
+    company_obj = db.query(models.Company).filter(
+        models.Company.id == job.company_id
+    ).first()
+
+    reset_monthly_usage(company_obj, db)
+    cv_check = check_cv_limit(company_obj, count=len(cv_files))
+    if not cv_check["allowed"]:
+        raise HTTPException(
+            status_code=403,
+            detail=cv_check["reason"]
+        )
+
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -188,7 +218,8 @@ def bulk_upload_cvs(
                 years_of_experience=parsed["years_of_experience"],
                 education_level=parsed["education_level"],
                 breakdown=score_result["breakdown"],
-                quality_feedback=score_result["quality_feedback"]
+                quality_feedback=score_result["quality_feedback"],
+                uganda_insights=score_result["uganda_report"]["insights"]
             )
 
             # Create a guest candidate record for bulk uploads
@@ -221,6 +252,9 @@ def bulk_upload_cvs(
             db.add(application)
             db.commit()
             db.refresh(application)
+
+            company_obj.cvs_processed_this_month += 1
+            db.commit()
 
             results.append({
                 "filename": cv_file.filename,

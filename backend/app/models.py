@@ -24,6 +24,8 @@ class Company(Base):
     email = Column(String, unique=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     plan = Column(Enum(PlanEnum), default=PlanEnum.free)
+    cvs_processed_this_month = Column(Integer, default=0)
+    billing_cycle_start = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     jobs = relationship("Job", back_populates="company")

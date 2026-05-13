@@ -4,6 +4,7 @@ from app.database import get_db
 from app import models, schemas
 from app.routers.auth import SECRET_KEY, ALGORITHM
 from jose import JWTError, jwt
+from app.plans import check_job_limit
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -36,6 +37,11 @@ def create_job(
 ):
     company = get_current_company(token, db)
 
+    # Check job limit for plan
+    limit_check = check_job_limit(company)
+    if not limit_check["allowed"]:
+        raise HTTPException(status_code=403, detail=limit_check["reason"])
+
     new_job = models.Job(
         company_id=company.id,
         title=payload.title,
@@ -46,7 +52,6 @@ def create_job(
     db.commit()
     db.refresh(new_job)
     return new_job
-
 
 # --- Get All Jobs for a Company ---
 @router.get("/my-jobs", response_model=list[schemas.JobOut])

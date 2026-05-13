@@ -57,6 +57,14 @@ export default function Home() {
         </div>
 
       </div>
+      <p className="mt-8 text-gray-500 text-sm">
+        <span
+            onClick={() => navigate('/pricing')}
+            className="text-purple-400 cursor-pointer hover:underline"
+        >
+            View Pricing Plans
+        </span>
+        </p>
     </div>
   )
 }

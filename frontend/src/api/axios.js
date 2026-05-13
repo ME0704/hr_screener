@@ -7,4 +7,19 @@ const API = axios.create({
   }
 })
 
+// Automatically handle expired tokens
+API.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // Clear all tokens
+      localStorage.removeItem('company_token')
+      localStorage.removeItem('candidate_token')
+      // Redirect to home
+      window.location.href = '/'
+    }
+    return Promise.reject(error)
+  }
+)
+
 export default API
